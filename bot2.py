@@ -3023,7 +3023,8 @@ class MultiTimeframeTradingBot:
             self.socket_manager = BinanceSocketManager(self.client, user_timeout=60)
             
             # Initialize dashboard
-            self.dashboard = EnhancedTradingDashboard(self, self.config.DASHBOARD_PORT)
+            self.dashboard = EnhancedTradingDashboard(self)
+
             await self.dashboard.start_server()
             
             # Fetch initial data
@@ -3492,6 +3493,7 @@ if __name__ == "__main__":
         print("\n👋 Bot stopped by user")
     except Exception as e:
         print(f"❌ Fatal error: {e}")
+
 
 
 
