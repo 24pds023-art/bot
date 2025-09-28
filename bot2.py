@@ -1584,6 +1584,7 @@ class EnhancedTradingDashboard:
         self.bot = bot
         self.config = config
         self.config.DASHBOARDPORT = int(os.environ.get("PORT", os.environ.get("WEBSITES_PORT", "8080")))
+        self.port = self.config.DASHBOARDPORT
         self.app = web.Application()
         self.websocket_connections = set()
         self.price_history = {}
@@ -3491,6 +3492,7 @@ if __name__ == "__main__":
         print("\n👋 Bot stopped by user")
     except Exception as e:
         print(f"❌ Fatal error: {e}")
+
 
 
 
