@@ -78,7 +78,7 @@ class TradingConfig:
     SAFETY_BUFFER_PCT: float = 0.0001
     WEBSOCKET_BATCH_SIZE: int = 6
     MAX_MESSAGES_PER_SECOND: int = 40
-    ENTRY_SCORE_THRESHOLD: float = 0.85
+    ENTRY_SCORE_THRESHOLD: float = 0.8
     VOLUME_CONFIRMATION_THRESHOLD: float = 0.8
     MAX_ORDER_AGE_MINUTES: int = 1
     MAX_FAILURES_PER_SYMBOL: int = 3
@@ -89,7 +89,7 @@ class TradingConfig:
     DASHBOARD_HISTORY_LIMIT: int = 100
     
     # Multi-timeframe specific settings
-    MIN_TIMEFRAME_CONFIRMATIONS: int = 3
+    MIN_TIMEFRAME_CONFIRMATIONS: int = 2
     TIMEFRAME_DIVERGENCE_THRESHOLD: float = 0.3
     CONFIRMATION_BOOST_MULTIPLIER: float = 1.3
     TREND_ALIGNMENT_BONUS: float = 0.3
@@ -113,7 +113,7 @@ class TradingConfig:
     RISK_REWARD_RATIO: float = 2     # 2:1 risk reward
     BASE_TAKE_PROFIT_PCT: float = 0.03 # 3% base take profit
     TRAILING_STOP_DISTANCE: float = 0.0009  # 0.8% trailing distance
-    BREAKEVEN_ACTIVATION: float = 0.001      # 1% profit to activate trailing
+    BREAKEVEN_ACTIVATION: float = 0.002      # 1% profit to activate trailing
     
     # ATR-based dynamic stop loss
     ATR_MULTIPLIER: float = 2.0        # ATR multiplier for stop loss
@@ -3493,6 +3493,7 @@ if __name__ == "__main__":
         print("\n👋 Bot stopped by user")
     except Exception as e:
         print(f"❌ Fatal error: {e}")
+
 
 
 
