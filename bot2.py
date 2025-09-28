@@ -19,7 +19,7 @@ import websockets
 import json
 import numpy as np
 import pandas as pd
-import pandas_ta as ta
+import pandas_ta_classic as ta
 from collections import deque
 from binance import AsyncClient, BinanceSocketManager
 from decimal import Decimal, getcontext
@@ -3490,3 +3490,4 @@ if __name__ == "__main__":
         print("\n👋 Bot stopped by user")
     except Exception as e:
         print(f"❌ Fatal error: {e}")
+
