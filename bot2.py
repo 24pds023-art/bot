@@ -1582,7 +1582,7 @@ class OrderExecutor:
 class EnhancedTradingDashboard:
     def __init__(self, bot: 'MultiTimeframeTradingBot'):
         self.bot = bot
-        self.config = config
+        self.config = bot.config
         self.config.DASHBOARDPORT = int(os.environ.get("PORT", os.environ.get("WEBSITES_PORT", "8080")))
         self.port = self.config.DASHBOARDPORT
         self.app = web.Application()
@@ -3492,6 +3492,7 @@ if __name__ == "__main__":
         print("\n👋 Bot stopped by user")
     except Exception as e:
         print(f"❌ Fatal error: {e}")
+
 
 
 
