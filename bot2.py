@@ -1582,7 +1582,7 @@ class OrderExecutor:
 class EnhancedTradingDashboard:
     def __init__(self, bot: 'MultiTimeframeTradingBot', port: int = 8080):
         self.bot = bot
-        self.port = port
+        self.config.DASHBOARDPORT = int(os.environ.get("PORT", os.environ.get("WEBSITES_PORT", "8080")))
         self.app = web.Application()
         self.websocket_connections = set()
         self.price_history = {}
@@ -2945,7 +2945,7 @@ class EnhancedTradingDashboard:
         runner = web.AppRunner(self.app)
         await runner.setup()
         
-        site = web.TCPSite(runner, '0.0.0.0', self.port)
+        site = web.TCPSite(runner, "0.0.0.0", self.config.DASHBOARDPORT)
         await site.start()
         
         print(f"🌐 Enhanced Dashboard server started at http://localhost:{self.port}")
@@ -3490,4 +3490,5 @@ if __name__ == "__main__":
         print("\n👋 Bot stopped by user")
     except Exception as e:
         print(f"❌ Fatal error: {e}")
+
 
