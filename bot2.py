@@ -38,6 +38,7 @@ import aiohttp_cors
 import weakref
 import gc
 import sys
+from dataclasses import field
 
 # Load environment variables
 load_dotenv()
@@ -61,67 +62,72 @@ SYMBOLS = [
 
 # Multi-timeframe configurations
 TIMEFRAMES = ['1m', '5m', '15m', '1h']
-TIMEFRAME_WEIGHTS = {'1m': 0.25, '5m': 0.30, '15m': 0.30, '1h': 0.15}
+TIMEFRAME_WEIGHTS = {"1h": 0.35, "15m": 0.30, "5m": 0.20, "1m": 0.15}
 
 @dataclass
+
+
 class TradingConfig:
-    """COMPLETE CONFIG WITH ALL FIXES"""
+    """Optimal config for intraday and scalping live trading"""
     BASE_POSITION_USD: float = 100
     LEVERAGE: int = 10
     MARGIN_TYPE: str = 'ISOLATED'
     MAX_POSITIONS_PER_SYMBOL: int = 1
-    MAX_CONCURRENT_POSITIONS: int = 10
-    SIGNAL_STRENGTH_THRESHOLD: float = 0.8
-    BINANCE_VIP_LEVEL: int = 0
-    MAKER_FEE_RATE: float = 0.0002
-    TAKER_FEE_RATE: float = 0.0004
+    MAX_CONCURRENT_POSITIONS: int = 12
+    
+    # Entry/Signal settings (aggressive but robust)
+    SIGNAL_STRENGTH_THRESHOLD: float = 0.16
+    ENTRY_SCORE_THRESHOLD: float = 0.16
+    VOLUME_CONFIRMATION_THRESHOLD: float = 0.68
+    INDIVIDUAL_TF_THRESHOLD: float = 0.11
+    MIN_TIMEFRAME_CONFIRMATIONS: int = 1          # 1 for frequency, 2 for winrate
+
+    MIN_CONSENSUS_THRESHOLD: float = 0.14
+    MIN_SIGNAL_STRENGTH: float = 0.13
+    MIN_CONSENSUS_STRENGTH: float = 0.13
+    MIN_TREND_ALIGNMENT: float = 0.05             # Slight trend edge is enough to trigger
+    TIMEFRAME_DIVERGENCE_THRESHOLD: float = 0.27
+    CONFIRMATION_BOOST_MULTIPLIER: float = 1.1
+    TREND_ALIGNMENT_BONUS: float = 0.16
+
+    # Order/risk/management
+    MAX_ORDER_AGE_MINUTES: int = 4
+    MAX_FAILURES_PER_SYMBOL: int = 7
+    COOLDOWN_MINUTES: int = 0.5                   # Re-entry allowed quicker
+    MAX_MESSAGES_PER_SECOND: int = 44
+    WEBSOCKET_BATCH_SIZE: int = 8
     SAFETY_BUFFER_PCT: float = 0.0001
-    WEBSOCKET_BATCH_SIZE: int = 6
-    MAX_MESSAGES_PER_SECOND: int = 40
-    ENTRY_SCORE_THRESHOLD: float = 0.8
-    VOLUME_CONFIRMATION_THRESHOLD: float = 0.8
-    MAX_ORDER_AGE_MINUTES: int = 1
-    MAX_FAILURES_PER_SYMBOL: int = 3
-    COOLDOWN_MINUTES: int = 3
-    MARKET_SLIPPAGE_TOLERANCE: float = 0.005
+    BINANCE_VIP_LEVEL: int = 0
+    MAKER_FEE_RATE: float = 0.00018
+    TAKER_FEE_RATE: float = 0.00036
+    MARKET_SLIPPAGE_TOLERANCE: float = 0.004
+
+    # Robust dashboard stats
     DASHBOARD_PORT: int = 8080
-    DASHBOARD_UPDATE_INTERVAL: int = 2
-    DASHBOARD_HISTORY_LIMIT: int = 100
-    
-    # Multi-timeframe specific settings
-    MIN_TIMEFRAME_CONFIRMATIONS: int = 2
-    TIMEFRAME_DIVERGENCE_THRESHOLD: float = 0.3
-    CONFIRMATION_BOOST_MULTIPLIER: float = 1.3
-    TREND_ALIGNMENT_BONUS: float = 0.3
-    INDIVIDUAL_TF_THRESHOLD: float = 0.1
-    MIN_CONSENSUS_THRESHOLD: float = 0.3
-    
-    # SIGNAL REVERSAL DETECTION SETTINGS
+    DASHBOARD_UPDATE_INTERVAL: int = 1
+    DASHBOARD_HISTORY_LIMIT: int = 500
+
+    # Reversal Exit
     ENABLE_SIGNAL_REVERSAL_EXIT: bool = True
-    SIGNAL_REVERSAL_THRESHOLD: float = 0.4
-    SIGNAL_REVERSAL_CONFIRMATIONS: int = 2
-    SIGNAL_EXPIRATION_MINUTES: int = 15
-    REVERSAL_EXIT_PRIORITY: str = "IMMEDIATE"  # "IMMEDIATE" or "TRAILING_FIRST"
-    
-    # Entry evaluation settings
-    MIN_SIGNAL_STRENGTH: float = 0.3
-    MIN_CONSENSUS_STRENGTH: float = 0.4
-    MIN_TREND_ALIGNMENT: float = 0.2
-    
-    # FIXED Risk-Reward Settings
-    BASE_STOP_LOSS_PCT: float = 0.015  # 1.5% base stop loss
-    RISK_REWARD_RATIO: float = 2     # 2:1 risk reward
-    BASE_TAKE_PROFIT_PCT: float = 0.03 # 3% base take profit
-    TRAILING_STOP_DISTANCE: float = 0.0009  # 0.8% trailing distance
-    BREAKEVEN_ACTIVATION: float = 0.002      # 1% profit to activate trailing
-    
+    SIGNAL_REVERSAL_THRESHOLD: float = 0.27
+    SIGNAL_REVERSAL_CONFIRMATIONS: int = 1
+    SIGNAL_EXPIRATION_MINUTES: int = 7
+    REVERSAL_EXIT_PRIORITY: str = "TRAILING_FIRST"
+
+    # Stoploss and risk-reward tuned for volatility
+    BASE_STOP_LOSS_PCT: float = 0.005
+    RISK_REWARD_RATIO: float = 2
+    BASE_TAKE_PROFIT_PCT: float = 0.01
+    TRAILING_STOP_DISTANCE: float = 0.0002
+    BREAKEVEN_ACTIVATION: float = 0.002
+
     # ATR-based dynamic stop loss
-    ATR_MULTIPLIER: float = 2.0        # ATR multiplier for stop loss
-    MIN_ATR_STOP_PCT: float = 0.005    # Minimum 0.8% stop loss
-    MAX_ATR_STOP_PCT: float = 0.025    # Maximum 2.5% stop loss
+    ATR_MULTIPLIER: float = 1.2
+    MIN_ATR_STOP_PCT: float = 0.003
+    MAX_ATR_STOP_PCT: float = 0.012
+
     USE_TESTNET: bool = True
-    # Symbol-specific minimum notional values
-    SYMBOL_MIN_NOTIONAL: Dict[str, float] = field(default_factory=lambda: {
+    SYMBOL_MIN_NOTIONAL: dict = field(default_factory=lambda: {
         'ETHUSDT': 20.0, 'LINKUSDT': 20.0, 'BCHUSDT': 20.0, 'ETCUSDT': 20.0, 'LTCUSDT': 20.0,
         'DOGEUSDT': 5.0, 'BNBUSDT': 5.0, 'ADAUSDT': 5.0, 'XRPUSDT': 5.0, 'SOLUSDT': 5.0,
         'DOTUSDT': 5.0, 'AVAXUSDT': 5.0, 'UNIUSDT': 5.0, 'ATOMUSDT': 5.0, 'VETUSDT': 5.0,
@@ -129,7 +135,6 @@ class TradingConfig:
         'OPUSDT': 5.0, 'FILUSDT': 5.0, 'AAVEUSDT': 5.0, 'COMPUSDT': 5.0, 'SNXUSDT': 5.0,
         'INJUSDT': 5.0, 'SUIUSDT': 5.0, 'APTUSDT': 5.0, 'ARKMUSDT': 5.0, 'IMXUSDT': 5.0
     })
-
 config = TradingConfig()
 getcontext().prec = 10
 
@@ -156,16 +161,475 @@ class SecureCredentials:
             raise ValueError("Invalid or missing API Secret in environment variables")
 @dataclass
 class SignalResult:
-    composite_signal: str  # 'BUY', 'SELL', 'NONE'
-    signal_strength: float  # 0.0 to 1.0
-    signal_quality: float   # 0.0 to 1.0
-    consensus_strength: float  # 0.0 to 1.0
+    composite_signal: str
+    signal_strength: float
+    signal_quality: float
+    consensus_strength: float
     confirmation_count: int
     trend_alignment_score: float
     timestamp: datetime
     indicators: Dict[str, Any]
     timeframe: str = ""
-    reason: str = ""
+
+def detect_market_regime(df):
+    try:
+        bb_data = ta.bbands(df['close'], length=20, std=2)
+        bb_width = (bb_data['BBU_20_2.0'] - bb_data['BBL_20_2.0']).mean() if not bb_data.empty else 0.04
+        atr = ta.atr(df['high'], df['low'], df['close'], length=14).mean()
+        if bb_width > 0.04 and atr > (0.004 * df['close'].mean()):
+            return "TRENDING"
+    except Exception:
+        pass
+    return "RANGING"
+
+ORDERFLOW_WEIGHT = 0.1  # Fine-tune as preferred
+
+class EnhancedMultiTimeframeSignalGenerator:
+    def __init__(self, config):
+        self.config = config
+        self.signal_cache = {}
+        self.volatility_cache = {}
+
+    def calculate_comprehensive_indicators(self, df: pd.DataFrame, timeframe: str = '5m') -> Dict[str, Any]:
+        if df.empty or len(df) < 20:
+            return {}
+        try:
+            df = df.dropna()
+            if len(df) < 20:
+                return {}
+            indicators = {}
+            timeframe_multiplier = {'1m': 0.3, '5m': 0.6, '15m': 1.0, '1h': 1.5}.get(timeframe, 1.0)
+            # RSI
+            try:
+                rsi_periods = [max(14, int(14*timeframe_multiplier)),
+                               max(21, int(21*timeframe_multiplier)),
+                               max(50, int(50*timeframe_multiplier))]
+                for i, period in enumerate(rsi_periods):
+                    if len(df) > period:
+                        rsi_result = ta.rsi(df['close'], length=period)
+                        key = ['rsi_fast', 'rsi_medium', 'rsi_slow'][i]
+                        indicators[key] = rsi_result.iloc[-1] if not rsi_result.empty and not pd.isna(rsi_result.iloc[-1]) else 50.0
+                    else:
+                        key = ['rsi_fast', 'rsi_medium', 'rsi_slow'][i]
+                        indicators[key] = 50.0
+            except:
+                indicators.update({'rsi_fast': 50.0, 'rsi_medium': 50.0, 'rsi_slow': 50.0})
+            # MACD
+            try:
+                if len(df) >= 50:
+                    fast_period = max(8, int(12 * timeframe_multiplier))
+                    slow_period = max(15, int(26 * timeframe_multiplier))
+                    signal_period = max(5, int(9 * timeframe_multiplier))
+                    macd_data = ta.macd(df['close'], fast=fast_period, slow=slow_period, signal=signal_period)
+                    if not macd_data.empty and len(macd_data) > 0:
+                        macd_cols = macd_data.columns
+                        if len(macd_cols) >= 3:
+                            indicators['macd'] = macd_data.iloc[-1, 0] if not pd.isna(macd_data.iloc[-1, 0]) else 0
+                            indicators['macd_signal'] = macd_data.iloc[-1, 1] if not pd.isna(macd_data.iloc[-1, 1]) else 0
+                            indicators['macd_histogram'] = macd_data.iloc[-1, 2] if not pd.isna(macd_data.iloc[-1, 2]) else 0
+                            indicators['macd_momentum'] = indicators['macd'] - indicators['macd_signal']
+                        else:
+                            indicators.update({'macd': 0.0, 'macd_signal': 0.0, 'macd_histogram': 0.0, 'macd_momentum': 0.0})
+                    else:
+                        indicators.update({'macd': 0.0, 'macd_signal': 0.0, 'macd_histogram': 0.0, 'macd_momentum': 0.0})
+                else:
+                    indicators.update({'macd': 0.0, 'macd_signal': 0.0, 'macd_histogram': 0.0, 'macd_momentum': 0.0})
+            except:
+                indicators.update({'macd': 0.0, 'macd_signal': 0.0, 'macd_histogram': 0.0, 'macd_momentum': 0.0})
+            # Bollinger Bands
+            try:
+                bb_period = max(14, int(20 * timeframe_multiplier))
+                bb_std = 2.0
+                if len(df) >= bb_period:
+                    bb_data = ta.bbands(df['close'], length=bb_period, std=bb_std)
+                    if not bb_data.empty and len(bb_data.columns) >= 3:
+                        upper_val = bb_data.iloc[-1, 0] if not pd.isna(bb_data.iloc[-1, 0]) else df['close'].iloc[-1] * 1.02
+                        middle_val = bb_data.iloc[-1, 1] if not pd.isna(bb_data.iloc[-1, 1]) else df['close'].iloc[-1]
+                        lower_val = bb_data.iloc[-1, 2] if not pd.isna(bb_data.iloc[-1, 2]) else df['close'].iloc[-1] * 0.98
+                        indicators['bb_upper'] = upper_val
+                        indicators['bb_middle'] = middle_val
+                        indicators['bb_lower'] = lower_val
+                        if middle_val > 0 and upper_val != lower_val:
+                            indicators['bb_width'] = (upper_val - lower_val) / middle_val
+                            indicators['bb_position'] = (df['close'].iloc[-1] - lower_val) / (upper_val - lower_val)
+                        else:
+                            indicators.update({'bb_width': 0.04, 'bb_position': 0.5})
+                    else:
+                        current_price = df['close'].iloc[-1]
+                        indicators.update({'bb_upper': current_price * 1.02, 'bb_middle': current_price,
+                            'bb_lower': current_price * 0.98, 'bb_width': 0.04, 'bb_position': 0.5})
+                else:
+                    current_price = df['close'].iloc[-1]
+                    indicators.update({'bb_upper': current_price * 1.02, 'bb_middle': current_price,
+                        'bb_lower': current_price * 0.98, 'bb_width': 0.04, 'bb_position': 0.5})
+            except:
+                current_price = df['close'].iloc[-1]
+                indicators.update({'bb_upper': current_price * 1.02, 'bb_middle': current_price, 'bb_lower': current_price * 0.98, 'bb_width': 0.04, 'bb_position': 0.5})
+            # ATR
+            try:
+                atr_period = max(14, int(14 * timeframe_multiplier))
+                if len(df) >= atr_period:
+                    atr_result = ta.atr(df['high'], df['low'], df['close'], length=atr_period)
+                    atr_value = atr_result.iloc[-1] if not atr_result.empty and not pd.isna(atr_result.iloc[-1]) else 0.001
+                    current_price = df['close'].iloc[-1]
+                    indicators['atr'] = atr_value
+                    indicators['atr_percentage'] = (atr_value / current_price) * 100
+                else:
+                    indicators.update({'atr': 0.001, 'atr_percentage': 0.1})
+            except:
+                indicators.update({'atr': 0.001, 'atr_percentage': 0.1})
+            # Volume
+            try:
+                volume_period = max(14, int(20 * timeframe_multiplier))
+                if len(df) >= volume_period:
+                    volume_sma = ta.sma(df['volume'], length=volume_period)
+                    if not volume_sma.empty and not pd.isna(volume_sma.iloc[-1]) and volume_sma.iloc[-1] > 0:
+                        indicators['volume_sma'] = volume_sma.iloc[-1]
+                        indicators['volume_ratio'] = df['volume'].iloc[-1] / indicators['volume_sma']
+                    else:
+                        indicators.update({'volume_sma': df['volume'].iloc[-1], 'volume_ratio': 1.0})
+                else:
+                    indicators.update({'volume_sma': df['volume'].iloc[-1], 'volume_ratio': 1.0})
+            except:
+                vol_val = df['volume'].iloc[-1] if len(df) > 0 else 1.0
+                indicators.update({'volume_sma': vol_val, 'volume_ratio': 1.0})
+            # Moving Averages
+            try:
+                ema_periods = [max(8, int(10 * timeframe_multiplier)),
+                               max(14, int(21 * timeframe_multiplier)),
+                               max(28, int(50 * timeframe_multiplier))]
+                sma_period = max(14, int(20 * timeframe_multiplier))
+                ema_values = []
+                for i, period in enumerate(ema_periods):
+                    if len(df) >= period:
+                        ema_result = ta.ema(df['close'], length=period)
+                        key = ['ema_fast', 'ema_medium', 'ema_slow'][i]
+                        indicators[key] = ema_result.iloc[-1] if not ema_result.empty and not pd.isna(ema_result.iloc[-1]) else df['close'].iloc[-1]
+                        ema_values.append(indicators[key])
+                    else:
+                        key = ['ema_fast', 'ema_medium', 'ema_slow'][i]
+                        indicators[key] = df['close'].iloc[-1]
+                        ema_values.append(df['close'].iloc[-1])
+                if len(df) >= sma_period:
+                    sma_result = ta.sma(df['close'], length=sma_period)
+                    indicators['sma_main'] = sma_result.iloc[-1] if not sma_result.empty and not pd.isna(sma_result.iloc[-1]) else df['close'].iloc[-1]
+                else:
+                    indicators['sma_main'] = df['close'].iloc[-1]
+                current_price = df['close'].iloc[-1]
+                if len(ema_values) == 3:
+                    if current_price > ema_values[0] > ema_values[1] > ema_values[2]:
+                        indicators['ema_alignment'] = 1.0
+                    elif current_price < ema_values[0] < ema_values[1] < ema_values[2]:
+                        indicators['ema_alignment'] = -1.0
+                    else:
+                        bullish_count = sum([current_price > ema_values[0], ema_values[0] > ema_values[1], ema_values[1] > ema_values[2]])
+                        bearish_count = sum([current_price < ema_values[0], ema_values[0] < ema_values[1], ema_values[1] < ema_values[2]])
+                        indicators['ema_alignment'] = (bullish_count - bearish_count) / 3.0
+                else:
+                    indicators['ema_alignment'] = 0.0
+            except:
+                indicators.update({'ema_fast': df['close'].iloc[-1], 'ema_medium': df['close'].iloc[-1],
+                                   'ema_slow': df['close'].iloc[-1], 'sma_main': df['close'].iloc[-1],
+                                   'ema_alignment': 0.0})
+            # Stochastic Oscillator
+            try:
+                stoch_period = max(14, int(14 * timeframe_multiplier))
+                if len(df) >= stoch_period:
+                    stoch_data = ta.stoch(df['high'], df['low'], df['close'], k=stoch_period, d=3, smooth_k=3)
+                    if not stoch_data.empty and len(stoch_data.columns) >= 2:
+                        indicators['stoch_k'] = stoch_data.iloc[-1, 0] if not pd.isna(stoch_data.iloc[-1, 0]) else 50.0
+                        indicators['stoch_d'] = stoch_data.iloc[-1, 1] if not pd.isna(stoch_data.iloc[-1, 1]) else 50.0
+                    else:
+                        indicators.update({'stoch_k': 50.0, 'stoch_d': 50.0})
+                else:
+                    indicators.update({'stoch_k': 50.0, 'stoch_d': 50.0})
+            except:
+                indicators.update({'stoch_k': 50.0, 'stoch_d': 50.0})
+            indicators['current_price'] = df['close'].iloc[-1]
+            indicators['timeframe'] = timeframe
+            indicators['data_points'] = len(df)
+            indicators['timeframe_multiplier'] = timeframe_multiplier
+            indicators['signal_timestamp'] = datetime.now()
+            return indicators
+        except Exception as e:
+            print(f"Error calculating indicators for {timeframe}: {e}")
+            return {}
+
+    def generate_timeframe_signal(self, indicators: Dict[str, Any], symbol: str, timeframe: str, orderflow_score: float = 0.0) -> 'SignalResult':
+        if not indicators:
+            return SignalResult("NONE", 0.0, 0.0, 0.0, 0, 0.0, datetime.now(), indicators, timeframe)
+        signals = {}
+        confirmations = 0
+        signal_components = []
+        try:
+            # RSI
+            rsi_score = 0
+            if all(k in indicators for k in ['rsi_fast', 'rsi_medium', 'rsi_slow']):
+                rsi_fast = indicators['rsi_fast']
+                rsi_medium = indicators['rsi_medium']
+                rsi_slow = indicators['rsi_slow']
+                rsi_scores = []
+                for rsi_val in [rsi_fast, rsi_medium, rsi_slow]:
+                    if rsi_val < 20: rsi_scores.append(0.9)
+                    elif rsi_val < 30: rsi_scores.append(0.6)
+                    elif rsi_val < 40: rsi_scores.append(0.3)
+                    elif rsi_val > 80: rsi_scores.append(-0.9)
+                    elif rsi_val > 70: rsi_scores.append(-0.6)
+                    elif rsi_val > 60: rsi_scores.append(-0.3)
+                    else: rsi_scores.append(0.0)
+                rsi_score = np.mean(rsi_scores)
+                rsi_score = np.clip(rsi_score, -1.0, 1.0)
+                if abs(rsi_score) > 0.3: confirmations += 1
+                signals['rsi'] = rsi_score
+                signal_components.append(('RSI', rsi_score))
+            # MACD
+            macd_score = 0
+            if all(k in indicators for k in ['macd', 'macd_signal', 'macd_histogram']):
+                macd = indicators['macd']
+                macd_signal = indicators['macd_signal']
+                macd_hist = indicators['macd_histogram']
+                if macd > macd_signal:
+                    macd_score = 0.5 + (0.3 if macd_hist > 0 else 0)
+                    if abs(macd_hist) > 0.00001:
+                        confirmations += 1
+                elif macd < macd_signal:
+                    macd_score = -0.5 + (-0.3 if macd_hist < 0 else 0)
+                    if abs(macd_hist) > 0.00001:
+                        confirmations += 1
+                macd_score = np.clip(macd_score, -1.0, 1.0)
+                signals['macd'] = macd_score
+                signal_components.append(('MACD', macd_score))
+            # Bollinger Bands
+            bb_score = 0
+            if all(k in indicators for k in ['bb_upper', 'bb_lower', 'current_price', 'bb_position']):
+                bb_position = indicators['bb_position']
+                if bb_position <= 0.2:
+                    bb_score = 0.7 + (0.2 if bb_position <= 0.05 else 0)
+                    confirmations += 1
+                elif bb_position <= 0.35:
+                    bb_score = 0.4
+                elif bb_position >= 0.8:
+                    bb_score = -0.7 + (-0.2 if bb_position >= 0.95 else 0)
+                    confirmations += 1
+                elif bb_position >= 0.65:
+                    bb_score = -0.4
+                bb_score = np.clip(bb_score, -1.0, 1.0)
+                signals['bb'] = bb_score
+                signal_components.append(('BB', bb_score))
+            # Trend (EMA alignment)
+            trend_score = 0
+            trend_direction = "NEUTRAL"
+            if all(k in indicators for k in ['current_price', 'ema_fast', 'ema_medium', 'ema_slow']):
+                ema_alignment = indicators.get('ema_alignment', 0.0)
+                if ema_alignment > 0.8:
+                    trend_score = 0.8
+                    trend_direction = "BULLISH"
+                    confirmations += 1
+                elif ema_alignment > 0.5:
+                    trend_score = 0.5
+                    trend_direction = "BULLISH"
+                elif ema_alignment < -0.8:
+                    trend_score = -0.8
+                    trend_direction = "BEARISH"
+                    confirmations += 1
+                elif ema_alignment < -0.5:
+                    trend_score = -0.5
+                    trend_direction = "BEARISH"
+                signals['trend'] = trend_score
+                signal_components.append(('Trend', trend_score))
+            # Volume
+            volume_score = 0
+            if 'volume_ratio' in indicators:
+                volume_ratio = indicators['volume_ratio']
+                if volume_ratio > 2.0:
+                    volume_score = 0.4
+                    confirmations += 1
+                elif volume_ratio > 1.5:
+                    volume_score = 0.3
+                elif volume_ratio > 1.2:
+                    volume_score = 0.2
+                elif volume_ratio < 0.5:
+                    volume_score = -0.2
+                volume_score = np.clip(volume_score, -0.5, 0.5)
+                signals['volume'] = volume_score
+                signal_components.append(('Volume', volume_score))
+            # Stochastic
+            stoch_score = 0
+            if all(k in indicators for k in ['stoch_k', 'stoch_d']):
+                stoch_k = indicators['stoch_k']
+                stoch_d = indicators['stoch_d']
+                if stoch_k < 20 and stoch_d < 20:
+                    stoch_score = 0.4
+                    if stoch_k > stoch_d:
+                        stoch_score += 0.2
+                elif stoch_k > 80 and stoch_d > 80:
+                    stoch_score = -0.4
+                    if stoch_k < stoch_d:
+                        stoch_score -= 0.2
+                signals['stochastic'] = stoch_score
+                signal_components.append(('Stoch', stoch_score))
+            # --- ORDERFLOW integration for maximal effect ---
+            indicators['orderflow_score'] = float(orderflow_score)
+            signal_components.append(('Orderflow', float(orderflow_score)))
+            if abs(orderflow_score) > 0.01:
+                confirmations += 1
+
+            weights = {'RSI': 0.19, 'MACD': 0.19, 'BB': 0.17, 'Trend': 0.15, 'Volume': 0.1, 'Stoch': 0.1, 'Orderflow': ORDERFLOW_WEIGHT}
+            weighted_score = 0
+            total_weight = 0
+            for component, score in signal_components:
+                weight = weights.get(component, 0.08)
+                weighted_score += score * weight
+                total_weight += weight
+            composite_score = weighted_score / total_weight if total_weight > 0 else 0
+
+            signal_threshold = self.config.INDIVIDUAL_TF_THRESHOLD
+            if composite_score > signal_threshold:
+                composite_signal = "BUY"
+                signal_strength = min(abs(composite_score), 1.0)
+            elif composite_score < -signal_threshold:
+                composite_signal = "SELL"
+                signal_strength = min(abs(composite_score), 1.0)
+            else:
+                composite_signal = "NONE"
+                signal_strength = 0.0
+
+            quality_factors = [
+                min(confirmations / 6.0, 1.0),
+                min(len(signal_components) / 7.0, 1.0),
+                min(abs(composite_score), 1.0)
+            ]
+            signal_quality = np.mean(quality_factors)
+            trend_score = signals.get('trend', 0.0)
+            trend_direction = "BULLISH" if trend_score > 0 else "BEARISH" if trend_score < 0 else "NEUTRAL"
+
+            return SignalResult(
+                composite_signal=composite_signal,
+                signal_strength=signal_strength,
+                signal_quality=signal_quality,
+                consensus_strength=signal_strength,
+                confirmation_count=confirmations,
+                trend_alignment_score=abs(trend_score) if trend_direction != "NEUTRAL" else 0.0,
+                timestamp=datetime.now(),
+                indicators=indicators,
+                timeframe=timeframe
+            )
+        except Exception as e:
+            print(f"Error generating signal for {symbol} {timeframe}: {e}")
+            return SignalResult(
+                composite_signal="NONE",
+                signal_strength=0.0,
+                signal_quality=0.0,
+                consensus_strength=0.0,
+                confirmation_count=0,
+                trend_alignment_score=0.0,
+                timestamp=datetime.now(),
+                indicators=indicators,
+                timeframe=timeframe
+            )
+
+    def generate_consensus_signal(self, timeframe_signals: Dict[str, SignalResult], symbol: str) -> SignalResult:
+        if not timeframe_signals:
+            return SignalResult("NONE", 0.0, 0.0, 0.0, 0, 0.0, datetime.now(), {}, "")
+        try:
+            buy_signals = []
+            sell_signals = []
+            for tf, signal in timeframe_signals.items():
+                if signal.composite_signal == "BUY":
+                    buy_signals.append((tf, signal))
+                elif signal.composite_signal == "SELL":
+                    sell_signals.append((tf, signal))
+            consensus_scores = []
+            confirmation_count = 0
+            quality_weighted_scores = []
+            total_quality_weight = 0
+            for tf, signal in timeframe_signals.items():
+                base_weight = TIMEFRAME_WEIGHTS.get(tf, 0.25)
+                quality_weight = base_weight * (0.5 + signal.signal_quality * 0.5)
+                if signal.composite_signal == "BUY":
+                    score = signal.signal_strength * quality_weight
+                    consensus_scores.append(score)
+                    quality_weighted_scores.append(score)
+                    confirmation_count += 1
+                elif signal.composite_signal == "SELL":
+                    score = -signal.signal_strength * quality_weight
+                    consensus_scores.append(score)
+                    quality_weighted_scores.append(score)
+                    confirmation_count += 1
+                else:
+                    consensus_scores.append(0)
+                    quality_weighted_scores.append(0)
+                total_quality_weight += quality_weight
+            total_consensus = sum(quality_weighted_scores) / total_quality_weight if total_quality_weight > 0 else 0
+            consensus_strength = abs(total_consensus)
+            consensus_threshold = self.config.MIN_CONSENSUS_THRESHOLD
+            min_confirmations = self.config.MIN_TIMEFRAME_CONFIRMATIONS
+            signal_quality_avg = np.mean([s.signal_quality for s in timeframe_signals.values()])
+            if (total_consensus > consensus_threshold and
+                len(buy_signals) >= min_confirmations and
+                signal_quality_avg > 0.3):
+                composite_signal = "BUY"
+                signal_strength = min(consensus_strength * 2, 1.0)
+            elif (total_consensus < -consensus_threshold and
+                  len(sell_signals) >= min_confirmations and
+                  signal_quality_avg > 0.3):
+                composite_signal = "SELL"
+                signal_strength = min(consensus_strength * 2, 1.0)
+            else:
+                composite_signal = "NONE"
+                signal_strength = 0.0
+            trend_scores = []
+            for signal in timeframe_signals.values():
+                if hasattr(signal, 'trend_alignment_score'):
+                    trend_scores.append(signal.trend_alignment_score)
+            trend_alignment_score = np.mean(trend_scores) if trend_scores else 0.0
+            quality_factors = [
+                signal_quality_avg,
+                min(confirmation_count / 4.0, 1.0),
+                min(len(timeframe_signals) / 4.0, 1.0),
+                consensus_strength
+            ]
+            signal_quality = np.mean(quality_factors)
+            return SignalResult(
+                composite_signal=composite_signal,
+                signal_strength=signal_strength,
+                signal_quality=signal_quality,
+                consensus_strength=consensus_strength,
+                confirmation_count=confirmation_count,
+                trend_alignment_score=trend_alignment_score,
+                timestamp=datetime.now(),
+                indicators={
+                    'consensus_method': 'quality_weighted',
+                    'timeframe_count': len(timeframe_signals),
+                    'avg_component_quality': signal_quality_avg
+                }
+            )
+        except Exception as e:
+            print(f"Error generating consensus signal for {symbol}: {e}")
+            return SignalResult(
+                composite_signal="NONE",
+                signal_strength=0.0,
+                signal_quality=0.0,
+                consensus_strength=0.0,
+                confirmation_count=0,
+                trend_alignment_score=0.0,
+                timestamp=datetime.now(),
+                indicators={}
+            )
+    def calculate_atr(self, df: pd.DataFrame, period: int = 14) -> float:
+        try:
+            if len(df) < period or df.empty:
+                return 0.001
+            if not all(col in df.columns for col in ['high', 'low', 'close']):
+                return 0.001
+            atr_result = ta.atr(df['high'], df['low'], df['close'], length=period)
+            if atr_result is None or atr_result.empty:
+                return 0.001
+            atr_value = atr_result.iloc[-1]
+            return atr_value if not pd.isna(atr_value) and atr_value > 0 else 0.001
+        except Exception as e:
+            print(f"ATR calculation error: {e}")
+            return 0.001
 
 @dataclass
 class EntryEvaluation:
@@ -351,630 +815,54 @@ class MultiTimeframeDataManager:
     def get_timeframe_data(self, timeframe: str) -> pd.DataFrame:
         return self.ohlcv_data.get(timeframe, pd.DataFrame())
 
-class EnhancedMultiTimeframeSignalGenerator:
-    def __init__(self, config: TradingConfig):
-        self.config = config
-        self.signal_cache = {}
-        self.volatility_cache = {}
-        
-    def calculate_comprehensive_indicators(self, df: pd.DataFrame, timeframe: str = '5m') -> Dict[str, Any]:
-        if df.empty or len(df) < 20:
-            return {}
-        
-        try:
-            df = df.dropna()
-            if len(df) < 20:
-                return {}
-            
-            indicators = {}
-            timeframe_multiplier = {'1m': 0.3, '5m': 0.6, '15m': 1.0, '1h': 1.5}.get(timeframe, 1.0)
-            
-            # Enhanced RSI calculation
-            try:
-                rsi_periods = [max(14, int(14 * timeframe_multiplier)), 
-                              max(21, int(21 * timeframe_multiplier)), 
-                              max(50, int(50 * timeframe_multiplier))]
-                
-                for i, period in enumerate(rsi_periods):
-                    if len(df) > period:
-                        rsi_result = ta.rsi(df['close'], length=period)
-                        key = ['rsi_fast', 'rsi_medium', 'rsi_slow'][i]
-                        indicators[key] = rsi_result.iloc[-1] if not rsi_result.empty and not pd.isna(rsi_result.iloc[-1]) else 50.0
-                    else:
-                        key = ['rsi_fast', 'rsi_medium', 'rsi_slow'][i]
-                        indicators[key] = 50.0
-            except:
-                indicators.update({
-                    'rsi_fast': 50.0, 'rsi_medium': 50.0, 'rsi_slow': 50.0
-                })
-            
-            # Enhanced MACD
-            try:
-                if len(df) >= 50:
-                    fast_period = max(8, int(12 * timeframe_multiplier))
-                    slow_period = max(15, int(26 * timeframe_multiplier))
-                    signal_period = max(5, int(9 * timeframe_multiplier))
-                    
-                    macd_data = ta.macd(df['close'], fast=fast_period, slow=slow_period, signal=signal_period)
-                    if not macd_data.empty and len(macd_data) > 0:
-                        macd_cols = macd_data.columns
-                        if len(macd_cols) >= 3:
-                            indicators['macd'] = macd_data.iloc[-1, 0] if not pd.isna(macd_data.iloc[-1, 0]) else 0
-                            indicators['macd_signal'] = macd_data.iloc[-1, 1] if not pd.isna(macd_data.iloc[-1, 1]) else 0
-                            indicators['macd_histogram'] = macd_data.iloc[-1, 2] if not pd.isna(macd_data.iloc[-1, 2]) else 0
-                            indicators['macd_momentum'] = indicators['macd'] - indicators['macd_signal']
-                        else:
-                            indicators.update({
-                                'macd': 0.0, 'macd_signal': 0.0, 'macd_histogram': 0.0, 
-                                'macd_momentum': 0.0
-                            })
-                    else:
-                        indicators.update({
-                            'macd': 0.0, 'macd_signal': 0.0, 'macd_histogram': 0.0, 
-                            'macd_momentum': 0.0
-                        })
-                else:
-                    indicators.update({
-                        'macd': 0.0, 'macd_signal': 0.0, 'macd_histogram': 0.0, 
-                        'macd_momentum': 0.0
-                    })
-            except:
-                indicators.update({
-                    'macd': 0.0, 'macd_signal': 0.0, 'macd_histogram': 0.0, 
-                    'macd_momentum': 0.0
-                })
-            
-            # Enhanced Bollinger Bands
-            try:
-                bb_period = max(14, int(20 * timeframe_multiplier))
-                bb_std = 2.0
-                
-                if len(df) >= bb_period:
-                    bb_data = ta.bbands(df['close'], length=bb_period, std=bb_std)
-                    if not bb_data.empty and len(bb_data.columns) >= 3:
-                        upper_val = bb_data.iloc[-1, 0] if not pd.isna(bb_data.iloc[-1, 0]) else df['close'].iloc[-1] * 1.02
-                        middle_val = bb_data.iloc[-1, 1] if not pd.isna(bb_data.iloc[-1, 1]) else df['close'].iloc[-1]
-                        lower_val = bb_data.iloc[-1, 2] if not pd.isna(bb_data.iloc[-1, 2]) else df['close'].iloc[-1] * 0.98
-                        
-                        indicators['bb_upper'] = upper_val
-                        indicators['bb_middle'] = middle_val
-                        indicators['bb_lower'] = lower_val
-                        
-                        if middle_val > 0 and upper_val != lower_val:
-                            indicators['bb_width'] = (upper_val - lower_val) / middle_val
-                            indicators['bb_position'] = (df['close'].iloc[-1] - lower_val) / (upper_val - lower_val)
-                        else:
-                            indicators.update({
-                                'bb_width': 0.04, 'bb_position': 0.5
-                            })
-                    else:
-                        current_price = df['close'].iloc[-1]
-                        indicators.update({
-                            'bb_upper': current_price * 1.02, 'bb_middle': current_price,
-                            'bb_lower': current_price * 0.98, 'bb_width': 0.04,
-                            'bb_position': 0.5
-                        })
-                else:
-                    current_price = df['close'].iloc[-1]
-                    indicators.update({
-                        'bb_upper': current_price * 1.02, 'bb_middle': current_price,
-                        'bb_lower': current_price * 0.98, 'bb_width': 0.04,
-                        'bb_position': 0.5
-                    })
-            except:
-                current_price = df['close'].iloc[-1]
-                indicators.update({
-                    'bb_upper': current_price * 1.02, 'bb_middle': current_price,
-                    'bb_lower': current_price * 0.98, 'bb_width': 0.04,
-                    'bb_position': 0.5
-                })
-            
-            # FIXED ATR calculation with proper minimum period
-            try:
-                atr_period = max(14, int(14 * timeframe_multiplier))
-                if len(df) >= atr_period:
-                    atr_result = ta.atr(df['high'], df['low'], df['close'], length=atr_period)
-                    atr_value = atr_result.iloc[-1] if not atr_result.empty and not pd.isna(atr_result.iloc[-1]) else 0.001
-                    
-                    current_price = df['close'].iloc[-1]
-                    indicators['atr'] = atr_value
-                    indicators['atr_percentage'] = (atr_value / current_price) * 100
-                else:
-                    indicators.update({
-                        'atr': 0.001, 'atr_percentage': 0.1
-                    })
-            except:
-                indicators.update({
-                    'atr': 0.001, 'atr_percentage': 0.1
-                })
-            
-            # Enhanced Volume analysis
-            try:
-                volume_period = max(14, int(20 * timeframe_multiplier))
-                if len(df) >= volume_period:
-                    volume_sma = ta.sma(df['volume'], length=volume_period)
-                    if not volume_sma.empty and not pd.isna(volume_sma.iloc[-1]) and volume_sma.iloc[-1] > 0:
-                        indicators['volume_sma'] = volume_sma.iloc[-1]
-                        indicators['volume_ratio'] = df['volume'].iloc[-1] / indicators['volume_sma']
-                    else:
-                        indicators.update({
-                            'volume_sma': df['volume'].iloc[-1], 'volume_ratio': 1.0
-                        })
-                else:
-                    indicators.update({
-                        'volume_sma': df['volume'].iloc[-1], 'volume_ratio': 1.0
-                    })
-            except:
-                vol_val = df['volume'].iloc[-1] if len(df) > 0 else 1.0
-                indicators.update({
-                    'volume_sma': vol_val, 'volume_ratio': 1.0
-                })
-            
-            # Enhanced Moving Averages
-            try:
-                ema_periods = [
-                    max(8, int(10 * timeframe_multiplier)),
-                    max(14, int(21 * timeframe_multiplier)),
-                    max(28, int(50 * timeframe_multiplier))
-                ]
-                sma_period = max(14, int(20 * timeframe_multiplier))
-                
-                ema_values = []
-                for i, period in enumerate(ema_periods):
-                    if len(df) >= period:
-                        ema_result = ta.ema(df['close'], length=period)
-                        key = ['ema_fast', 'ema_medium', 'ema_slow'][i]
-                        indicators[key] = ema_result.iloc[-1] if not ema_result.empty and not pd.isna(ema_result.iloc[-1]) else df['close'].iloc[-1]
-                        ema_values.append(indicators[key])
-                    else:
-                        key = ['ema_fast', 'ema_medium', 'ema_slow'][i]
-                        indicators[key] = df['close'].iloc[-1]
-                        ema_values.append(df['close'].iloc[-1])
-                
-                if len(df) >= sma_period:
-                    sma_result = ta.sma(df['close'], length=sma_period)
-                    indicators['sma_main'] = sma_result.iloc[-1] if not sma_result.empty and not pd.isna(sma_result.iloc[-1]) else df['close'].iloc[-1]
-                else:
-                    indicators['sma_main'] = df['close'].iloc[-1]
-                
-                # EMA alignment score
-                current_price = df['close'].iloc[-1]
-                if len(ema_values) == 3:
-                    if current_price > ema_values[0] > ema_values[1] > ema_values[2]:
-                        indicators['ema_alignment'] = 1.0
-                    elif current_price < ema_values[0] < ema_values[1] < ema_values[2]:
-                        indicators['ema_alignment'] = -1.0
-                    else:
-                        bullish_count = sum([current_price > ema_values[0], ema_values[0] > ema_values[1], ema_values[1] > ema_values[2]])
-                        bearish_count = sum([current_price < ema_values[0], ema_values[0] < ema_values[1], ema_values[1] < ema_values[2]])
-                        indicators['ema_alignment'] = (bullish_count - bearish_count) / 3.0
-                else:
-                    indicators['ema_alignment'] = 0.0
-                    
-            except:
-                indicators.update({
-                    'ema_fast': df['close'].iloc[-1], 'ema_medium': df['close'].iloc[-1],
-                    'ema_slow': df['close'].iloc[-1], 'sma_main': df['close'].iloc[-1],
-                    'ema_alignment': 0.0
-                })
-            
-            # Add Stochastic Oscillator
-            try:
-                stoch_period = max(14, int(14 * timeframe_multiplier))
-                if len(df) >= stoch_period:
-                    stoch_data = ta.stoch(df['high'], df['low'], df['close'], k=stoch_period, d=3, smooth_k=3)
-                    if not stoch_data.empty and len(stoch_data.columns) >= 2:
-                        indicators['stoch_k'] = stoch_data.iloc[-1, 0] if not pd.isna(stoch_data.iloc[-1, 0]) else 50.0
-                        indicators['stoch_d'] = stoch_data.iloc[-1, 1] if not pd.isna(stoch_data.iloc[-1, 1]) else 50.0
-                    else:
-                        indicators.update({'stoch_k': 50.0, 'stoch_d': 50.0})
-                else:
-                    indicators.update({'stoch_k': 50.0, 'stoch_d': 50.0})
-            except:
-                indicators.update({'stoch_k': 50.0, 'stoch_d': 50.0})
-            
-            # Current price and metadata
-            indicators['current_price'] = df['close'].iloc[-1]
-            indicators['timeframe'] = timeframe
-            indicators['data_points'] = len(df)
-            indicators['timeframe_multiplier'] = timeframe_multiplier
-            indicators['signal_timestamp'] = datetime.now()
-            
-            return indicators
-            
-        except Exception as e:
-            print(f"Error calculating indicators for {timeframe}: {e}")
-            return {}
-    
-    def generate_timeframe_signal(self, indicators: Dict[str, Any], symbol: str, timeframe: str) -> SignalResult:
-        """Enhanced signal generation with comprehensive analysis"""
-        if not indicators:
-            return SignalResult(
-                composite_signal="NONE",
-                signal_strength=0.0,
-                signal_quality=0.0,
-                consensus_strength=0.0,
-                confirmation_count=0,
-                trend_alignment_score=0.0,
-                timestamp=datetime.now(),
-                indicators=indicators,
-                timeframe=timeframe
-            )
-        
-        signals = {}
-        confirmations = 0
-        signal_components = []
-        
-        try:
-            # Enhanced RSI Analysis
-            rsi_score = 0
-            if all(k in indicators for k in ['rsi_fast', 'rsi_medium', 'rsi_slow']):
-                rsi_fast = indicators['rsi_fast']
-                rsi_medium = indicators['rsi_medium']
-                rsi_slow = indicators['rsi_slow']
-                
-                rsi_scores = []
-                for rsi_val in [rsi_fast, rsi_medium, rsi_slow]:
-                    if rsi_val < 20:
-                        rsi_scores.append(0.9)
-                    elif rsi_val < 30:
-                        rsi_scores.append(0.6)
-                    elif rsi_val < 40:
-                        rsi_scores.append(0.3)
-                    elif rsi_val > 80:
-                        rsi_scores.append(-0.9)
-                    elif rsi_val > 70:
-                        rsi_scores.append(-0.6)
-                    elif rsi_val > 60:
-                        rsi_scores.append(-0.3)
-                    else:
-                        rsi_scores.append(0.0)
-                
-                rsi_score = np.mean(rsi_scores)
-                rsi_score = np.clip(rsi_score, -1.0, 1.0)
-                
-                if abs(rsi_score) > 0.3:
-                    confirmations += 1
-                signals['rsi'] = rsi_score
-                signal_components.append(('RSI', rsi_score))
-            
-            # Enhanced MACD Analysis
-            macd_score = 0
-            if all(k in indicators for k in ['macd', 'macd_signal', 'macd_histogram']):
-                macd = indicators['macd']
-                macd_signal = indicators['macd_signal']
-                macd_hist = indicators['macd_histogram']
-                
-                if macd > macd_signal:
-                    macd_score = 0.5 + (0.3 if macd_hist > 0 else 0)
-                    if abs(macd_hist) > 0.00001:
-                        confirmations += 1
-                elif macd < macd_signal:
-                    macd_score = -0.5 + (-0.3 if macd_hist < 0 else 0)
-                    if abs(macd_hist) > 0.00001:
-                        confirmations += 1
-                
-                macd_score = np.clip(macd_score, -1.0, 1.0)
-                signals['macd'] = macd_score
-                signal_components.append(('MACD', macd_score))
-            
-            # Enhanced Bollinger Bands Analysis
-            bb_score = 0
-            if all(k in indicators for k in ['bb_upper', 'bb_lower', 'current_price', 'bb_position']):
-                bb_position = indicators['bb_position']
-                
-                if bb_position <= 0.2:
-                    bb_score = 0.7 + (0.2 if bb_position <= 0.05 else 0)
-                    confirmations += 1
-                elif bb_position <= 0.35:
-                    bb_score = 0.4
-                elif bb_position >= 0.8:
-                    bb_score = -0.7 + (-0.2 if bb_position >= 0.95 else 0)
-                    confirmations += 1
-                elif bb_position >= 0.65:
-                    bb_score = -0.4
-                
-                bb_score = np.clip(bb_score, -1.0, 1.0)
-                signals['bb'] = bb_score
-                signal_components.append(('BB', bb_score))
-            
-            # Enhanced Moving Average Trend Analysis
-            trend_score = 0
-            trend_direction = "NEUTRAL"
-            if all(k in indicators for k in ['current_price', 'ema_fast', 'ema_medium', 'ema_slow']):
-                ema_alignment = indicators.get('ema_alignment', 0.0)
-                
-                if ema_alignment > 0.8:
-                    trend_score = 0.8
-                    trend_direction = "BULLISH"
-                    confirmations += 1
-                elif ema_alignment > 0.5:
-                    trend_score = 0.5
-                    trend_direction = "BULLISH"
-                elif ema_alignment < -0.8:
-                    trend_score = -0.8
-                    trend_direction = "BEARISH"
-                    confirmations += 1
-                elif ema_alignment < -0.5:
-                    trend_score = -0.5
-                    trend_direction = "BEARISH"
-                
-                signals['trend'] = trend_score
-                signal_components.append(('Trend', trend_score))
-            
-            # Enhanced Volume Analysis
-            volume_score = 0
-            if 'volume_ratio' in indicators:
-                volume_ratio = indicators['volume_ratio']
-                
-                if volume_ratio > 2.0:
-                    volume_score = 0.4
-                    confirmations += 1
-                elif volume_ratio > 1.5:
-                    volume_score = 0.3
-                elif volume_ratio > 1.2:
-                    volume_score = 0.2
-                elif volume_ratio < 0.5:
-                    volume_score = -0.2
-                
-                volume_score = np.clip(volume_score, -0.5, 0.5)
-                signals['volume'] = volume_score
-                signal_components.append(('Volume', volume_score))
-            
-            # Stochastic Oscillator
-            stoch_score = 0
-            if all(k in indicators for k in ['stoch_k', 'stoch_d']):
-                stoch_k = indicators['stoch_k']
-                stoch_d = indicators['stoch_d']
-                
-                if stoch_k < 20 and stoch_d < 20:
-                    stoch_score = 0.4
-                    if stoch_k > stoch_d:
-                        stoch_score += 0.2
-                elif stoch_k > 80 and stoch_d > 80:
-                    stoch_score = -0.4
-                    if stoch_k < stoch_d:
-                        stoch_score -= 0.2
-                
-                signals['stochastic'] = stoch_score
-                signal_components.append(('Stoch', stoch_score))
-            
-            # Calculate composite signal with weighted components
-            if signal_components:
-                weights = {'RSI': 0.25, 'MACD': 0.25, 'BB': 0.20, 'Trend': 0.20, 'Volume': 0.05, 'Stoch': 0.05}
-                weighted_score = 0
-                total_weight = 0
-                
-                for component, score in signal_components:
-                    weight = weights.get(component, 0.1)
-                    weighted_score += score * weight
-                    total_weight += weight
-                
-                composite_score = (weighted_score / total_weight) if total_weight > 0 else 0
-            else:
-                composite_score = 0
-            
-            # Signal threshold from config
-            signal_threshold = self.config.INDIVIDUAL_TF_THRESHOLD
-            
-            if composite_score > signal_threshold:
-                composite_signal = "BUY"
-                signal_strength = min(abs(composite_score), 1.0)
-            elif composite_score < -signal_threshold:
-                composite_signal = "SELL"
-                signal_strength = min(abs(composite_score), 1.0)
-            else:
-                composite_signal = "NONE"
-                signal_strength = 0.0
-            
-            # Enhanced signal quality calculation
-            quality_factors = [
-                min(confirmations / 4.0, 1.0),
-                min(len(signal_components) / 6.0, 1.0),
-                min(abs(composite_score), 1.0)
-            ]
-            
-            signal_quality = np.mean(quality_factors)
-            
-            return SignalResult(
-                composite_signal=composite_signal,
-                signal_strength=signal_strength,
-                signal_quality=signal_quality,
-                consensus_strength=signal_strength,
-                confirmation_count=confirmations,
-                trend_alignment_score=abs(trend_score) if trend_direction != "NEUTRAL" else 0.0,
-                timestamp=datetime.now(),
-                indicators=indicators,
-                timeframe=timeframe
-            )
-            
-        except Exception as e:
-            print(f"Error generating signal for {symbol} {timeframe}: {e}")
-            return SignalResult(
-                composite_signal="NONE",
-                signal_strength=0.0,
-                signal_quality=0.0,
-                consensus_strength=0.0,
-                confirmation_count=0,
-                trend_alignment_score=0.0,
-                timestamp=datetime.now(),
-                indicators=indicators,
-                timeframe=timeframe
-            )
-    
-    def generate_consensus_signal(self, timeframe_signals: Dict[str, SignalResult], symbol: str) -> SignalResult:
-        """Enhanced consensus signal generation"""
-        if not timeframe_signals:
-            return SignalResult(
-                composite_signal="NONE",
-                signal_strength=0.0,
-                signal_quality=0.0,
-                consensus_strength=0.0,
-                confirmation_count=0,
-                trend_alignment_score=0.0,
-                timestamp=datetime.now(),
-                indicators={}
-            )
-        
-        try:
-            buy_signals = []
-            sell_signals = []
-            
-            for tf, signal in timeframe_signals.items():
-                if signal.composite_signal == "BUY":
-                    buy_signals.append((tf, signal))
-                elif signal.composite_signal == "SELL":
-                    sell_signals.append((tf, signal))
-            
-            # Enhanced consensus calculation
-            consensus_scores = []
-            confirmation_count = 0
-            quality_weighted_scores = []
-            total_quality_weight = 0
-            
-            for tf, signal in timeframe_signals.items():
-                base_weight = TIMEFRAME_WEIGHTS.get(tf, 0.25)
-                quality_weight = base_weight * (0.5 + signal.signal_quality * 0.5)
-                
-                if signal.composite_signal == "BUY":
-                    score = signal.signal_strength * quality_weight
-                    consensus_scores.append(score)
-                    quality_weighted_scores.append(score)
-                    confirmation_count += 1
-                elif signal.composite_signal == "SELL":
-                    score = -signal.signal_strength * quality_weight
-                    consensus_scores.append(score)
-                    quality_weighted_scores.append(score)
-                    confirmation_count += 1
-                else:
-                    consensus_scores.append(0)
-                    quality_weighted_scores.append(0)
-                
-                total_quality_weight += quality_weight
-            
-            total_consensus = sum(quality_weighted_scores) / total_quality_weight if total_quality_weight > 0 else 0
-            consensus_strength = abs(total_consensus)
-            
-            consensus_threshold = self.config.MIN_CONSENSUS_THRESHOLD
-            min_confirmations = self.config.MIN_TIMEFRAME_CONFIRMATIONS
-            
-            signal_quality_avg = np.mean([s.signal_quality for s in timeframe_signals.values()])
-            
-            if (total_consensus > consensus_threshold and 
-                len(buy_signals) >= min_confirmations and
-                signal_quality_avg > 0.3):
-                composite_signal = "BUY"
-                signal_strength = min(consensus_strength * 2, 1.0)
-            elif (total_consensus < -consensus_threshold and 
-                  len(sell_signals) >= min_confirmations and
-                  signal_quality_avg > 0.3):
-                composite_signal = "SELL"
-                signal_strength = min(consensus_strength * 2, 1.0)
-            else:
-                composite_signal = "NONE"
-                signal_strength = 0.0
-            
-            # Calculate trend alignment score
-            trend_scores = []
-            for signal in timeframe_signals.values():
-                if hasattr(signal, 'trend_alignment_score'):
-                    trend_scores.append(signal.trend_alignment_score)
-            
-            trend_alignment_score = np.mean(trend_scores) if trend_scores else 0.0
-            
-            quality_factors = [
-                signal_quality_avg,
-                min(confirmation_count / 4.0, 1.0),
-                min(len(timeframe_signals) / 4.0, 1.0),
-                consensus_strength
-            ]
-            
-            signal_quality = np.mean(quality_factors)
-            
-            return SignalResult(
-                composite_signal=composite_signal,
-                signal_strength=signal_strength,
-                signal_quality=signal_quality,
-                consensus_strength=consensus_strength,
-                confirmation_count=confirmation_count,
-                trend_alignment_score=trend_alignment_score,
-                timestamp=datetime.now(),
-                indicators={
-                    'consensus_method': 'quality_weighted',
-                    'timeframe_count': len(timeframe_signals),
-                    'avg_component_quality': signal_quality_avg
-                }
-            )
-            
-        except Exception as e:
-            print(f"Error generating consensus signal for {symbol}: {e}")
-            return SignalResult(
-                composite_signal="NONE",
-                signal_strength=0.0,
-                signal_quality=0.0,
-                consensus_strength=0.0,
-                confirmation_count=0,
-                trend_alignment_score=0.0,
-                timestamp=datetime.now(),
-                indicators={}
-            )
-    
-    # In calculate_atr method, add validation:
-    def calculate_atr(self, df: pd.DataFrame, period: int = 14) -> float:
-        try:
-            if len(df) < period or df.empty:
-                return 0.001
-            
-            # Ensure we have required columns
-            if not all(col in df.columns for col in ['high', 'low', 'close']):
-                return 0.001
-                
-            atr_result = ta.atr(df['high'], df['low'], df['close'], length=period)
-            if atr_result is None or atr_result.empty:
-                return 0.001
-                
-            atr_value = atr_result.iloc[-1]
-            return atr_value if not pd.isna(atr_value) and atr_value > 0 else 0.001
-        except Exception as e:
-            print(f"ATR calculation error: {e}")
-            return 0.001
-
 class EntryManager:
     def __init__(self, config: TradingConfig):
         self.config = config
     
     def evaluate_multi_entry_point(self, signal: SignalResult, current_price: float, 
-                                  volatility: float, volume_ratio: float) -> EntryEvaluation:
+                              volatility: float, volume_ratio: float) -> EntryEvaluation:
         """Evaluate if we should enter based on multi-timeframe signal"""
-        
+
         if signal.signal_strength < self.config.MIN_SIGNAL_STRENGTH:
             return EntryEvaluation(
                 should_enter=False,
                 entry_confidence=0.0,
                 reason=f"Signal strength too low: {signal.signal_strength:.2f}"
             )
-        
+
         if signal.consensus_strength < self.config.MIN_CONSENSUS_STRENGTH:
             return EntryEvaluation(
                 should_enter=False,
                 entry_confidence=0.0,
                 reason=f"Consensus strength too low: {signal.consensus_strength:.2f}"
             )
-        
+
         if signal.confirmation_count < self.config.MIN_TIMEFRAME_CONFIRMATIONS:
             return EntryEvaluation(
                 should_enter=False,
                 entry_confidence=0.0,
                 reason=f"Insufficient confirmations: {signal.confirmation_count}"
             )
-        
+
         if signal.trend_alignment_score < self.config.MIN_TREND_ALIGNMENT:
             return EntryEvaluation(
                 should_enter=False,
                 entry_confidence=0.0,
                 reason=f"Poor trend alignment: {signal.trend_alignment_score:.2f}"
             )
-        
+
+        orderflow = signal.indicators.get('orderflow_score', 0)
+        orderflow_bonus = 0.0
+        if abs(orderflow) > 0.1:
+            orderflow_bonus = 0.1
+
+        if signal.consensus_strength < self.config.MIN_CONSENSUS_STRENGTH:
+            return EntryEvaluation(
+                should_enter=False,
+                entry_confidence=0.0,
+                reason=f"Consensus strength too low: {signal.consensus_strength:.2f}"
+            )
+
         confidence_factors = [
             signal.signal_strength,
             signal.consensus_strength,
@@ -982,17 +870,53 @@ class EntryManager:
             min(signal.confirmation_count / 4.0, 1.0),
             min(volume_ratio / 2.0, 1.0)
         ]
-        
-        entry_confidence = sum(confidence_factors) / len(confidence_factors)
-        
+
+        entry_confidence = sum(confidence_factors) / len(confidence_factors) + orderflow_bonus
+
         risk_level = "LOW" if entry_confidence > 0.8 else "MEDIUM" if entry_confidence > 0.6 else "HIGH"
-        
+
         return EntryEvaluation(
             should_enter=True,
             entry_confidence=entry_confidence,
             reason=f"Multi-timeframe entry approved: confidence={entry_confidence:.2f}",
             risk_level=risk_level
         )
+
+
+class OrderFlowAnalyzer:
+    def __init__(self, symbol):
+        self.symbol = symbol
+        self.orderbook = {"bids": [], "asks": []}
+        self.trade_tape = deque(maxlen=100)
+
+    async def subscribe(self, binance_client):
+        bm = BinanceSocketManager(binance_client)
+        depth = bm.futures_socket(symbol=f"{self.symbol.lower()}@depth", depth=20)
+        agg_trade = bm.futures_socket(symbol=f"{self.symbol.lower()}@aggTrade")
+        async with depth as ds, agg_trade as ts:
+            while True:
+                ob_event = await ds.recv()
+                trade_event = await ts.recv()
+                self.orderbook['bids'] = [(float(price), float(qty)) for price, qty in ob_event['bids'][:10]]
+                self.orderbook['asks'] = [(float(price), float(qty)) for price, qty in ob_event['asks'][:10]]
+                self.trade_tape.append({
+                    'p': float(trade_event['p']),
+                    'q': float(trade_event['q']),
+                    'isBuyerMaker': trade_event['m']
+                })
+                if len(self.trade_tape) > 100:
+                    self.trade_tape.popleft()
+
+    def get_orderflow_score(self):
+        bid_size = sum(qty for price, qty in self.orderbook['bids'])
+        ask_size = sum(qty for price, qty in self.orderbook['asks'])
+        imbalance = (bid_size - ask_size) / (bid_size + ask_size + 1e-6)
+        buy_trades = sum(1 for t in self.trade_tape if not t['isBuyerMaker'])
+        sell_trades = sum(1 for t in self.trade_tape if t['isBuyerMaker'])
+        tape_score = (buy_trades - sell_trades) / max(len(self.trade_tape), 1)
+        score = 0.6 * imbalance + 0.4 * tape_score
+        return np.clip(score, -1.0, 1.0)
+
 
 class SimplePositionManager:
     def __init__(self, config: TradingConfig):
@@ -1578,6 +1502,8 @@ class OrderExecutor:
             error_msg = str(e)
             print(f"❌ Order execution failed for {symbol}: {error_msg}")
             return {'error': error_msg}
+
+from aiohttp import web, WSMsgType
 
 class EnhancedTradingDashboard:
     def __init__(self, bot: 'MultiTimeframeTradingBot'):
@@ -2966,7 +2892,6 @@ class EnhancedTradingDashboard:
             except Exception as e:
                 print(f"Error in WebSocket update loop: {e}")
                 await asyncio.sleep(60)
-
 class MultiTimeframeTradingBot:
     def __init__(self):
         self.config = config
@@ -2979,7 +2904,8 @@ class MultiTimeframeTradingBot:
         self.position_manager = SimplePositionManager(self.config)
         self.executor = None
         self.dashboard = None
-        
+        self.orderflow_analyzers = {}
+
         # Enhanced tracking
         self.timeframe_signal_cache = {}
         self.recent_signals = deque(maxlen=100)
@@ -2999,7 +2925,8 @@ class MultiTimeframeTradingBot:
         # Initialize data managers
         for symbol in SYMBOLS:
             self.data_managers[symbol] = MultiTimeframeDataManager(symbol)
-        
+        for symbol in SYMBOLS:
+            self.orderflow_analyzers[symbol] = OrderFlowAnalyzer(symbol)
         print(f"🤖 Enhanced Multi-Timeframe Trading Bot initialized")
         print(f"📊 Monitoring {len(SYMBOLS)} symbols across {len(TIMEFRAMES)} timeframes")
         print(f"🎯 Features: ATR Stops, Signal Reversal, WebSocket-Only Updates")
@@ -3128,35 +3055,37 @@ class MultiTimeframeTradingBot:
                 await self.start_websocket_streams()
     
     async def analyze_multi_timeframe_signals(self, symbol: str):
-        """Enhanced multi-timeframe signal analysis"""
+        """Enhanced multi-timeframe signal analysis with maximal orderflow integration"""
         try:
             data_manager = self.data_managers[symbol]
             timeframe_signals = {}
-            
-            # Generate signals for each timeframe
+
+            # Generate signals for each timeframe with orderflow integration
             for timeframe in TIMEFRAMES:
                 df = data_manager.get_timeframe_data(timeframe)
                 if df.empty or len(df) < 20:
                     continue
-                
                 indicators = self.signal_generator.calculate_comprehensive_indicators(df, timeframe)
+                orderflow_score = self.orderflow_analyzers[symbol].get_orderflow_score()
                 if indicators:
-                    signal = self.signal_generator.generate_timeframe_signal(indicators, symbol, timeframe)
+                    signal = self.signal_generator.generate_timeframe_signal(
+                        indicators, symbol, timeframe, orderflow_score=orderflow_score
+                    )
                     timeframe_signals[timeframe] = signal
-            
+
             if not timeframe_signals:
                 return
-            
+
             # Generate consensus signal
             consensus_signal = self.signal_generator.generate_consensus_signal(timeframe_signals, symbol)
-            
+
             # Update signal cache
             self.timeframe_signal_cache[symbol] = consensus_signal
-            
+
             # Check if we should execute a trade
             if consensus_signal.composite_signal in ['BUY', 'SELL']:
                 await self._execute_multi_timeframe_entry(symbol, consensus_signal, timeframe_signals)
-            
+
             # Update signals for dashboard
             signal_data = {
                 'symbol': symbol,
@@ -3165,11 +3094,11 @@ class MultiTimeframeTradingBot:
                 'quality': consensus_signal.signal_quality,
                 'timeframe_confirmations': consensus_signal.confirmation_count,
                 'timestamp': consensus_signal.timestamp,
-                'atr': timeframe_signals.get('5m', {}).indicators.get('atr', 0) if timeframe_signals else 0
+                'atr': timeframe_signals.get('5m', SignalResult("",0,0,0,0,0,datetime.now(),{})).indicators.get('atr', 0)
             }
             self.recent_signals.append(signal_data)
             self.signals_generated += 1
-            
+
         except Exception as e:
             print(f"Error analyzing signals for {symbol}: {e}")
     
@@ -3202,7 +3131,7 @@ class MultiTimeframeTradingBot:
             
             # Calculate position size
             available_balance = self.balance * 0.95  # Use 95% of balance
-            position_value = max(self.config.BASE_POSITION_USD, available_balance)
+            position_value = min(self.config.BASE_POSITION_USD, available_balance)
             
             if position_value < self.config.SYMBOL_MIN_NOTIONAL.get(symbol, 5.0):
                 print(f"❌ Insufficient balance for {symbol}: Need ${self.config.SYMBOL_MIN_NOTIONAL.get(symbol, 5.0)}, Have ${position_value}")
@@ -3387,6 +3316,7 @@ class MultiTimeframeTradingBot:
                 # Analyze signals for all symbols
                 tasks = []
                 for symbol in SYMBOLS:
+
                     task = asyncio.create_task(self.analyze_multi_timeframe_signals(symbol))
                     tasks.append(task)
                 
@@ -3493,7 +3423,6 @@ if __name__ == "__main__":
         print("\n👋 Bot stopped by user")
     except Exception as e:
         print(f"❌ Fatal error: {e}")
-
 
 
 
